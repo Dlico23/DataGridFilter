@@ -64,7 +64,7 @@ namespace FilterDataGrid
             {
                 try
                 {
-                    return Type.GetType(FieldTypeString);
+                    return FieldTypeString != null ? Type.GetType(FieldTypeString) : null;
                 }
                 catch (Exception ex)
                 {
