@@ -107,7 +107,7 @@ namespace FilterDataGrid
             DependencyProperty.Register("ExcludeFields",
                 typeof(string),
                 typeof(FilterDataGrid),
-                new PropertyMetadata(""));
+                new PropertyMetadata(string.Empty));
 
         /// <summary>
         ///     Excluded Column (only AutoGeneratingColumn)
@@ -116,7 +116,7 @@ namespace FilterDataGrid
             DependencyProperty.Register("ExcludeColumns",
                 typeof(string),
                 typeof(FilterDataGrid),
-                new PropertyMetadata(""));
+                new PropertyMetadata(string.Empty));
 
         /// <summary>
         ///     Date format displayed
@@ -1780,7 +1780,7 @@ namespace FilterDataGrid
 
                     // empty item flag
                     // if they exist, remove all null or empty string values from the list.
-                    // content == null and content == "" are two different things but both labeled as (blank)
+                    // content == null and content == string.Empty are two different things but both labeled as (blank)
                     var emptyItem = sourceObjectList.RemoveAll(v => v == null || v.Equals(string.Empty)) > 0;
 
                     // TODO : AggregateException when user can add row
