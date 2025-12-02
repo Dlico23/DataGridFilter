@@ -6,7 +6,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 
-namespace DemoApp.Net7._0
+namespace DemoApp.Net10._0
 {
     /// <summary>
     /// Interaction logic for App.xaml
