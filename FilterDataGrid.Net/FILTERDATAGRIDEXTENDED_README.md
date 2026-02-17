@@ -96,7 +96,7 @@ dataGrid.ItemsSourceChanging += (sender, e) =>
         e.Cancel = true;
 };
 
-dataGrid.ItemsSourceChangedComplete += (sender, e) =>
+dataGrid.ItemsSourceChanged += (sender, e) =>
 {
     if (e.StateRestored)
         Console.WriteLine("Filter and view state restored!");
@@ -133,7 +133,7 @@ dataGrid.ItemsSource = GetUpdatedData();
 |-------|-----------|-------------|
 | `FilterCompleted` | `FilterCompletedEventArgs` | Raised when filter operation completes |
 | `ItemsSourceChanging` | `ItemsSourceChangingEventArgs` | Raised before ItemsSource changes (cancellable) |
-| `ItemsSourceChangedComplete` | `ItemsSourceChangedEventArgs` | Raised after ItemsSource changed |
+| `ItemsSourceChanged` | `ItemsSourceChangedEventArgs` | Raised after ItemsSource changed |
 | `FilteredItemsChanging` | `FilteredItemsChangingEventArgs` | Raised before filtered items change (before filter applied/removed) |
 | `FilteredItemsChanged` | `FilteredItemsChangedEventArgs` | Raised after filtered items changed (after filter applied/removed) |
 ### FilterBuilder Methods

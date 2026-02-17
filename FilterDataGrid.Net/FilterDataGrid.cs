@@ -207,7 +207,7 @@ namespace FilterDataGrid
         /// <summary>
         /// Raised after ItemsSource has changed and state has been restored (if enabled)
         /// </summary>
-        public event EventHandler<ItemsSourceChangedEventArgs> ItemsSourceChangedComplete;
+        public event EventHandler<ItemsSourceChangedEventArgs> ItemsSourceChanged;
 
         /// <summary>
         /// Raised before filtered items are about to change (before filter is applied/removed)
@@ -795,12 +795,12 @@ namespace FilterDataGrid
                         RestoreState();
                         isPreservingState = false;
 
-                        OnItemsSourceChangedComplete(new ItemsSourceChangedEventArgs(oldValue, newValue, true));
+                        OnItemsSourceChanged(new ItemsSourceChangedEventArgs(oldValue, newValue, true));
                     }), DispatcherPriority.Loaded);
                 }
                 else if (newValue != null)
                 {
-                    OnItemsSourceChangedComplete(new ItemsSourceChangedEventArgs(oldValue, newValue, false));
+                    OnItemsSourceChanged(new ItemsSourceChangedEventArgs(oldValue, newValue, false));
                 }
             }
             catch (Exception ex)
@@ -2343,11 +2343,11 @@ namespace FilterDataGrid
         }
 
         /// <summary>
-        /// Raises the ItemsSourceChangedComplete event
+        /// Raises the ItemsSourceChanged event
         /// </summary>
-        private void OnItemsSourceChangedComplete(ItemsSourceChangedEventArgs e)
+        private void OnItemsSourceChanged(ItemsSourceChangedEventArgs e)
         {
-            ItemsSourceChangedComplete?.Invoke(this, e);
+            ItemsSourceChanged?.Invoke(this, e);
         }
 
         /// <summary>
