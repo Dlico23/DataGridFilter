@@ -208,7 +208,7 @@ namespace FilterDataGrid
         public string Empty => Translate(TranslatableElements.Empty);
         public string IsFalse => Translate(TranslatableElements.False);
         public string IsTrue => Translate(TranslatableElements.True);
-        public string Neutral => "{0}";
+        public static string Neutral => "{0}";
         public string Ok => Translate(TranslatableElements.Ok);
         public string RemoveAll => Translate(TranslatableElements.RemoveAll);
         public string StartsWith => Translate(TranslatableElements.StartsWith);

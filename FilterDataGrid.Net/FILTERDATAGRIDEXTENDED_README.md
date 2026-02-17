@@ -66,6 +66,19 @@ dataGrid.FilterCompleted += (sender, e) =>
         Console.WriteLine($"Last Modified: {e.LastModifiedFilter.FieldName}");
     }
 };
+
+// Subscribe to filtered items changes
+dataGrid.FilteredItemsChanging += (sender, e) =>
+{
+    Console.WriteLine($"Filtered items changing from {e.CurrentFilteredItemsCount} to {e.UpcomingFilteredItemsCount}");
+    // UpcomingFilteredItemsCount is -1 if unknown
+};
+
+dataGrid.FilteredItemsChanged += (sender, e) =>
+{
+    Console.WriteLine($"Filtered items changed from {e.PreviousFilteredItemsCount} to {e.CurrentFilteredItemsCount}");
+    // Perfect place to update UI, charts, or statistics
+};
 ```
 
 ### 5. **State Preservation on ItemsSource Change**
@@ -121,7 +134,8 @@ dataGrid.ItemsSource = GetUpdatedData();
 | `FilterCompleted` | `FilterCompletedEventArgs` | Raised when filter operation completes |
 | `ItemsSourceChanging` | `ItemsSourceChangingEventArgs` | Raised before ItemsSource changes (cancellable) |
 | `ItemsSourceChangedComplete` | `ItemsSourceChangedEventArgs` | Raised after ItemsSource changed |
-
+| `FilteredItemsChanging` | `FilteredItemsChangingEventArgs` | Raised before filtered items change (before filter applied/removed) |
+| `FilteredItemsChanged` | `FilteredItemsChangedEventArgs` | Raised after filtered items changed (after filter applied/removed) |
 ### FilterBuilder Methods
 
 | Method | Description |
@@ -160,7 +174,42 @@ void RefreshData()
 }
 ```
 
-### 4. Complex Programmatic Filtering
+### 4. Real-Time Statistics Update
+```csharp
+// Update statistics whenever filtered items change
+dataGrid.FilteredItemsChanged += (sender, e) =>
+{
+    // Update your UI with new statistics
+    totalItemsLabel.Text = $"Total: {dataGrid.Items.Count}";
+    filteredItemsLabel.Text = $"Filtered: {e.CurrentFilteredItemsCount}";
+    hiddenItemsLabel.Text = $"Hidden: {dataGrid.Items.Count - e.CurrentFilteredItemsCount}";
+    
+    // Update chart or graph
+    UpdateChart(dataGrid.FilteredItems);
+    
+    // Log the change
+    Logger.Info($"Filter changed items from {e.PreviousFilteredItemsCount} to {e.CurrentFilteredItemsCount}");
+};
+```
+
+### 5. Show Loading Indicator During Filter
+```csharp
+dataGrid.FilteredItemsChanging += (sender, e) =>
+{
+    // Show loading indicator
+    loadingSpinner.Visibility = Visibility.Visible;
+    statusText.Text = "Applying filter...";
+};
+
+dataGrid.FilteredItemsChanged += (sender, e) =>
+{
+    // Hide loading indicator
+    loadingSpinner.Visibility = Visibility.Collapsed;
+    statusText.Text = $"Showing {e.CurrentFilteredItemsCount} items";
+};
+```
+
+### 6. Complex Programmatic Filtering
 ```csharp
 void ApplyBusinessRuleFilter()
 {
@@ -180,5 +229,54 @@ void ApplyBusinessRuleFilter()
     builder.AddFilter("Date", oldItems);
     
     builder.Apply();
+}
+```
+
+## Event Handler Examples
+
+```csharp
+private void DataGrid_FilterCompleted(object sender, FilterCompletedEventArgs e)
+{
+    // Update status bar
+    statusText.Text = $"Showing {e.FilteredItemsCount} of {dataGrid.Items.Count} items";
+    
+    // Auto-save filter state
+    SaveFilterState();
+    
+    // Log filter details
+    foreach (FilterCommon filter in e.ActiveFilters)
+    {
+        System.Diagnostics.Debug.WriteLine(
+            $"Filter: {filter.FieldName} - Excluded: {filter.PreviouslyFilteredItems.Count}");
+    }
+}
+
+private void DataGrid_FilteredItemsChanging(object sender, FilteredItemsChangingEventArgs e)
+{
+    // Show loading indicator
+    loadingSpinner.Visibility = Visibility.Visible;
+    statusText.Text = "Applying filter...";
+    
+    System.Diagnostics.Debug.WriteLine(
+        $"Items changing from {e.CurrentFilteredItemsCount} to {e.UpcomingFilteredItemsCount}");
+}
+
+private void DataGrid_FilteredItemsChanged(object sender, FilteredItemsChangedEventArgs e)
+{
+    // Hide loading indicator
+    loadingSpinner.Visibility = Visibility.Collapsed;
+    
+    // Update UI
+    totalItemsLabel.Text = $"Total: {dataGrid.Items.Count}";
+    filteredItemsLabel.Text = $"Filtered: {e.CurrentFilteredItemsCount}";
+    hiddenItemsLabel.Text = $"Hidden: {dataGrid.Items.Count - e.CurrentFilteredItemsCount}";
+    
+    statusText.Text = $"Showing {e.CurrentFilteredItemsCount} items";
+    
+    // Update chart or statistics
+    UpdateDashboard(dataGrid.FilteredItems);
+    
+    System.Diagnostics.Debug.WriteLine(
+        $"Items changed from {e.PreviousFilteredItemsCount} to {e.CurrentFilteredItemsCount}");
 }
 ```

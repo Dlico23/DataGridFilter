@@ -209,6 +209,18 @@ namespace FilterDataGrid
         /// </summary>
         public event EventHandler<ItemsSourceChangedEventArgs> ItemsSourceChangedComplete;
 
+        /// <summary>
+        /// Raised before filtered items are about to change (before filter is applied/removed)
+        /// Provides current and upcoming filtered item counts
+        /// </summary>
+        public event EventHandler<FilteredItemsChangingEventArgs> FilteredItemsChanging;
+
+        /// <summary>
+        /// Raised after filtered items have changed (after filter is applied/removed)
+        /// Provides previous and current filtered item counts
+        /// </summary>
+        public event EventHandler<FilteredItemsChangedEventArgs> FilteredItemsChanged;
+
         #endregion Public Event
 
         #region Private Constants
@@ -851,8 +863,14 @@ namespace FilterDataGrid
 
             ElapsedTime = new TimeSpan(0, 0, 0);
 
+            // Capture current count before removing filters
+            int previousFilteredCount = FilteredItemsCount;
+
             try
             {
+                // Raise FilteredItemsChanging before removing filters
+                OnFilteredItemsChanging(new FilteredItemsChangingEventArgs(previousFilteredCount, Items.Count)); // Will show all items
+
                 foreach (FilterCommon filter in GlobalFilterList)
                 {
                     FilterState.SetIsFiltered(filter.FilterButton, false);
@@ -863,6 +881,10 @@ namespace FilterDataGrid
                 criteria.Clear();
                 GlobalFilterList.Clear();
                 CollectionViewSource?.Refresh();
+
+                // Raise FilteredItemsChanged after removing filters
+                int currentFilteredCount = FilteredItemsCount;
+                OnFilteredItemsChanged(new FilteredItemsChangedEventArgs(previousFilteredCount, currentFilteredCount));
 
                 // empty json file
                 if (PersistentFilter) SavePreset();
@@ -963,7 +985,17 @@ namespace FilterDataGrid
         /// </summary>
         public void RefreshFilter()
         {
+            // Capture current count before refresh
+            int previousFilteredCount = FilteredItemsCount;
+
+            // Raise FilteredItemsChanging before refresh
+            OnFilteredItemsChanging(new FilteredItemsChangingEventArgs(previousFilteredCount, -1)); // -1 = unknown upcoming count
+
             CollectionViewSource?.Refresh();
+
+            // Raise FilteredItemsChanged after refresh
+            int currentFilteredCount = FilteredItemsCount;
+            OnFilteredItemsChanged(new FilteredItemsChangedEventArgs(previousFilteredCount, currentFilteredCount));
         }
 
         #endregion Public Methods
@@ -1041,7 +1073,7 @@ namespace FilterDataGrid
                                 .Distinct()];
 
                         // Convert previously filtered items to the correct type
-                        preset.PreviouslyFilteredItems = [.. preset.PreviouslyFilteredItems.Select(o => ConvertToType(o, preset.FieldType))];
+                        preset.PreviouslyFilteredItems = [.. preset.PreviouslyFilteredItems.Select(o => FilterDataGrid.ConvertToType(o, preset.FieldType))];
 
                         // Get the items that are always present in the source collection
                         preset.FilteredItems = [.. sourceObjectList.Where(c => preset.PreviouslyFilteredItems.Contains(c))];
@@ -1105,7 +1137,7 @@ namespace FilterDataGrid
         /// <param name="value">The object to convert.</param>
         /// <param name="type">The target type.</param>
         /// <returns>The converted object.</returns>
-        private object ConvertToType(object value, Type type)
+        private static object ConvertToType(object value, Type type)
         {
             try
             {
@@ -2085,6 +2117,9 @@ namespace FilterDataGrid
             // set cursor wait
             Mouse.OverrideCursor = Cursors.Wait;
 
+            // Capture current count before filtering
+            int previousFilteredCount = FilteredItemsCount;
+
             try
             {
                 await Task.Run(() =>
@@ -2156,8 +2191,15 @@ namespace FilterDataGrid
                     lastFilter = CurrentFilter.FieldName;
                 });
 
+                // Raise FilteredItemsChanging before applying the filter
+                OnFilteredItemsChanging(new FilteredItemsChangingEventArgs(previousFilteredCount, -1)); // -1 = unknown upcoming count
+
                 // apply filter
                 CollectionViewSource.Refresh();
+
+                // Raise FilteredItemsChanged after applying the filter
+                int currentFilteredCount = FilteredItemsCount;
+                OnFilteredItemsChanged(new FilteredItemsChangedEventArgs(previousFilteredCount, currentFilteredCount));
 
                 // set button icon (filtered or not)
                 FilterState.SetIsFiltered(CurrentFilter.FilterButton, CurrentFilter?.IsFiltered ?? false);
@@ -2187,9 +2229,6 @@ namespace FilterDataGrid
 
                 Debug.WriteLineIf(DebugMode, $@"ApplyFilterCommand Elapsed time : {ElapsedTime:mm\:ss\.ff}");
             }
-
-            // Raise FilterCompleted event
-            OnFilterCompleted(new FilterCompletedEventArgs(null, FilteredItemsCount, ActiveFilters));
         }
 
         /// <summary>
@@ -2312,6 +2351,24 @@ namespace FilterDataGrid
         }
 
         /// <summary>
+        /// Raised before filtered items are about to change (before filter is applied/removed)
+        /// Provides current and upcoming filtered item counts
+        /// </summary>
+        private void OnFilteredItemsChanging(FilteredItemsChangingEventArgs e)
+        {
+            FilteredItemsChanging?.Invoke(this, e);
+        }
+
+        /// <summary>
+        /// Raised after filtered items have changed (after filter is applied/removed)
+        /// Provides previous and current filtered item counts
+        /// </summary>
+        private void OnFilteredItemsChanged(FilteredItemsChangedEventArgs e)
+        {
+            FilteredItemsChanged?.Invoke(this, e);
+        }
+
+        /// <summary>
         /// Captures current state before ItemsSource change
         /// </summary>
         private void CaptureCurrentState()
@@ -2359,7 +2416,7 @@ namespace FilterDataGrid
             if (selectedItemBeforeChange != null)
             {
                 SelectedItem = Items.Cast<object>().FirstOrDefault(item =>
-                    ItemsAreEqual(item, selectedItemBeforeChange));
+                    FilterDataGrid.ItemsAreEqual(item, selectedItemBeforeChange));
 
                 if (SelectedItem == null && selectedIndexBeforeChange >= 0 && selectedIndexBeforeChange < Items.Count)
                 {
@@ -2386,6 +2443,12 @@ namespace FilterDataGrid
         {
             if (filters == null || filters.Count == 0) return;
 
+            // Capture current count before filtering
+            int previousFilteredCount = FilteredItemsCount;
+
+            // Raise FilteredItemsChanging before applying filters
+            OnFilteredItemsChanging(new FilteredItemsChangingEventArgs(previousFilteredCount, -1)); // -1 = unknown upcoming count
+
             foreach (FilterCommon filter in filters)
             {
                 DataGridColumn column = Columns.FirstOrDefault(c =>
@@ -2404,10 +2467,9 @@ namespace FilterDataGrid
                     filter.AddFilter(criteria);
                 }
 
+                // add current filter to GlobalFilterList
                 if (GlobalFilterList.All(f => f.FieldName != filter.FieldName))
-                {
                     GlobalFilterList.Add(filter);
-                }
 
                 if (filterButton != null)
                 {
@@ -2416,6 +2478,10 @@ namespace FilterDataGrid
             }
 
             RefreshFilter();
+
+            // Raise FilteredItemsChanged after applying filters
+            int currentFilteredCount = FilteredItemsCount;
+            OnFilteredItemsChanged(new FilteredItemsChangedEventArgs(previousFilteredCount, currentFilteredCount));
 
             OnFilterCompleted(new FilterCompletedEventArgs(
                 filters.LastOrDefault(),
@@ -2426,7 +2492,7 @@ namespace FilterDataGrid
         /// <summary>
         /// Checks if two items are equal for selection restoration
         /// </summary>
-        private bool ItemsAreEqual(object item1, object item2)
+        private static bool ItemsAreEqual(object item1, object item2)
         {
             if (item1 == null || item2 == null) return false;
             if (item1.Equals(item2)) return true;
@@ -2448,9 +2514,9 @@ namespace FilterDataGrid
 
             return false;
         }
-
-        #endregion Private Methods
     }
+
+    #endregion Private Methods
 
     #region Event Args Classes
 
@@ -2483,6 +2549,24 @@ namespace FilterDataGrid
         public IEnumerable OldSource { get; } = oldSource;
         public IEnumerable NewSource { get; } = newSource;
         public bool StateRestored { get; } = stateRestored;
+    }
+
+    /// <summary>
+    /// Event arguments for filtered items changing
+    /// </summary>
+    public class FilteredItemsChangingEventArgs(int currentFilteredItemsCount, int upcomingFilteredItemsCount) : EventArgs
+    {
+        public int CurrentFilteredItemsCount { get; } = currentFilteredItemsCount;
+        public int UpcomingFilteredItemsCount { get; } = upcomingFilteredItemsCount;
+    }
+
+    /// <summary>
+    /// Event arguments for filtered items changed
+    /// </summary>
+    public class FilteredItemsChangedEventArgs(int previousFilteredItemsCount, int currentFilteredItemsCount) : EventArgs
+    {
+        public int PreviousFilteredItemsCount { get; } = previousFilteredItemsCount;
+        public int CurrentFilteredItemsCount { get; } = currentFilteredItemsCount;
     }
 
     #endregion Event Args Classes
