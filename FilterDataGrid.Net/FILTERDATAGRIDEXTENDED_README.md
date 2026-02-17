@@ -54,19 +54,6 @@ dataGrid.CreateFilterBuilder()
 Know when filters are applied or removed.
 
 ```csharp
-// Subscribe to filter changes
-dataGrid.FilterCompleted += (sender, e) =>
-{
-    Console.WriteLine($"Filtered Items: {e.FilteredItemsCount}");
-    Console.WriteLine($"Active Filters: {e.ActiveFilters.Count}");
-    Console.WriteLine($"Timestamp: {e.Timestamp}");
-    
-    if (e.LastModifiedFilter != null)
-    {
-        Console.WriteLine($"Last Modified: {e.LastModifiedFilter.FieldName}");
-    }
-};
-
 // Subscribe to filtered items changes
 dataGrid.FilteredItemsChanging += (sender, e) =>
 {
@@ -78,6 +65,15 @@ dataGrid.FilteredItemsChanged += (sender, e) =>
 {
     Console.WriteLine($"Filtered items changed from {e.PreviousFilteredItemsCount} to {e.CurrentFilteredItemsCount}");
     // Perfect place to update UI, charts, or statistics
+};
+
+// **NEW: Unified DataChanged event - monitors ALL data changes**
+dataGrid.DataChanged += (sender, e) =>
+{
+    Console.WriteLine($"Data changed at {e.Timestamp}");
+    // Fires for both ItemsSource changes AND filter changes
+    // Perfect single point to update UI, statistics, charts, etc.
+    UpdateEverything();
 };
 ```
 
@@ -131,11 +127,12 @@ dataGrid.ItemsSource = GetUpdatedData();
 
 | Event | EventArgs | Description |
 |-------|-----------|-------------|
-| `FilterCompleted` | `FilterCompletedEventArgs` | Raised when filter operation completes |
 | `ItemsSourceChanging` | `ItemsSourceChangingEventArgs` | Raised before ItemsSource changes (cancellable) |
 | `ItemsSourceChanged` | `ItemsSourceChangedEventArgs` | Raised after ItemsSource changed |
 | `FilteredItemsChanging` | `FilteredItemsChangingEventArgs` | Raised before filtered items change (before filter applied/removed) |
 | `FilteredItemsChanged` | `FilteredItemsChangedEventArgs` | Raised after filtered items changed (after filter applied/removed) |
+| `DataChanged` | `DataChangedEventArgs` | **Unified event** - Raised whenever ItemsSource OR FilteredItems change |
+
 ### FilterBuilder Methods
 
 | Method | Description |
@@ -147,12 +144,20 @@ dataGrid.ItemsSource = GetUpdatedData();
 
 ## Common Use Cases
 
-### 1. Auto-Save Filter State
+### 1. Monitor All Data Changes (Unified Event)
 ```csharp
-dataGrid.FilterCompleted += (s, e) =>
+// Single event for ALL data changes - ItemsSource OR Filters
+dataGrid.DataChanged += (s, e) =>
 {
-    FilterStateData state = dataGrid.GetCurrentFilterState();
-    SaveToDatabase(state);
+    // Update UI
+    UpdateStatistics();
+    UpdateCharts();
+    
+    // Save state
+    SaveFilterState();
+    
+    // Log
+    Logger.Info($"Data changed at {e.Timestamp}");
 };
 ```
 
@@ -235,20 +240,26 @@ void ApplyBusinessRuleFilter()
 ## Event Handler Examples
 
 ```csharp
-private void DataGrid_FilterCompleted(object sender, FilterCompletedEventArgs e)
+private void DataGrid_DataChanged(object sender, DataChangedEventArgs e)
 {
+    // **UNIFIED EVENT** - Handles ALL data changes (ItemsSource and Filters)
+    // This is the EASIEST way to monitor all data changes in one place!
+    
     // Update status bar
-    statusText.Text = $"Showing {e.FilteredItemsCount} of {dataGrid.Items.Count} items";
+    statusText.Text = $"Showing {dataGrid.FilteredItemsCount} of {dataGrid.Items.Count} items";
+    
+    // Update statistics
+    totalItemsLabel.Text = $"Total: {dataGrid.Items.Count}";
+    filteredItemsLabel.Text = $"Showing: {dataGrid.FilteredItemsCount}";
+    
+    // Update charts or dashboard
+    UpdateDashboard(dataGrid.FilteredItems);
     
     // Auto-save filter state
     SaveFilterState();
     
-    // Log filter details
-    foreach (FilterCommon filter in e.ActiveFilters)
-    {
-        System.Diagnostics.Debug.WriteLine(
-            $"Filter: {filter.FieldName} - Excluded: {filter.PreviouslyFilteredItems.Count}");
-    }
+    // Log
+    System.Diagnostics.Debug.WriteLine($"Data changed at {e.Timestamp}");
 }
 
 private void DataGrid_FilteredItemsChanging(object sender, FilteredItemsChangingEventArgs e)
@@ -266,17 +277,15 @@ private void DataGrid_FilteredItemsChanged(object sender, FilteredItemsChangedEv
     // Hide loading indicator
     loadingSpinner.Visibility = Visibility.Collapsed;
     
-    // Update UI
-    totalItemsLabel.Text = $"Total: {dataGrid.Items.Count}";
-    filteredItemsLabel.Text = $"Filtered: {e.CurrentFilteredItemsCount}";
-    hiddenItemsLabel.Text = $"Hidden: {dataGrid.Items.Count - e.CurrentFilteredItemsCount}";
-    
-    statusText.Text = $"Showing {e.CurrentFilteredItemsCount} items";
-    
-    // Update chart or statistics
-    UpdateDashboard(dataGrid.FilteredItems);
-    
     System.Diagnostics.Debug.WriteLine(
         $"Items changed from {e.PreviousFilteredItemsCount} to {e.CurrentFilteredItemsCount}");
+}
+
+private void DataGrid_ItemsSourceChanged(object sender, ItemsSourceChangedEventArgs e)
+{
+    if (e.StateRestored)
+    {
+        System.Diagnostics.Debug.WriteLine("Filter and view state restored!");
+    }
 }
 ```

@@ -193,12 +193,6 @@ namespace FilterDataGrid
         public event EventHandler Sorted;
 
         /// <summary>
-        /// Raised when filter operation is completed (apply or remove filter)
-        /// Includes information about active filters and filtered item count
-        /// </summary>
-        public event EventHandler<FilterCompletedEventArgs> FilterCompleted;
-
-        /// <summary>
         /// Raised before ItemsSource is about to change
         /// Allows cancellation of state preservation
         /// </summary>
@@ -220,6 +214,12 @@ namespace FilterDataGrid
         /// Provides previous and current filtered item counts
         /// </summary>
         public event EventHandler<FilteredItemsChangedEventArgs> FilteredItemsChanged;
+
+        /// <summary>
+        /// Unified event raised whenever any data changes (ItemsSource OR FilteredItems)
+        /// Perfect for monitoring all data changes in one place
+        /// </summary>
+        public event EventHandler<DataChangedEventArgs> DataChanged;
 
         #endregion Public Event
 
@@ -888,9 +888,6 @@ namespace FilterDataGrid
 
                 // empty json file
                 if (PersistentFilter) SavePreset();
-
-                // Raise FilterCompleted event
-                OnFilterCompleted(new FilterCompletedEventArgs(null, FilteredItemsCount, ActiveFilters));
             }
             catch (Exception ex)
             {
@@ -2327,14 +2324,6 @@ namespace FilterDataGrid
         }
 
         /// <summary>
-        /// Raises the FilterCompleted event
-        /// </summary>
-        private void OnFilterCompleted(FilterCompletedEventArgs e)
-        {
-            FilterCompleted?.Invoke(this, e);
-        }
-
-        /// <summary>
         /// Raises the ItemsSourceChanging event
         /// </summary>
         private void OnItemsSourceChanging(ItemsSourceChangingEventArgs e)
@@ -2348,6 +2337,9 @@ namespace FilterDataGrid
         private void OnItemsSourceChanged(ItemsSourceChangedEventArgs e)
         {
             ItemsSourceChanged?.Invoke(this, e);
+            
+            // Raise unified DataChanged event
+            OnDataChanged();
         }
 
         /// <summary>
@@ -2366,6 +2358,18 @@ namespace FilterDataGrid
         private void OnFilteredItemsChanged(FilteredItemsChangedEventArgs e)
         {
             FilteredItemsChanged?.Invoke(this, e);
+            
+            // Raise unified DataChanged event
+            OnDataChanged();
+        }
+
+        /// <summary>
+        /// Raises the unified DataChanged event
+        /// Fired whenever ItemsSource or FilteredItems change
+        /// </summary>
+        private void OnDataChanged()
+        {
+            DataChanged?.Invoke(this, new DataChangedEventArgs());
         }
 
         /// <summary>
@@ -2446,7 +2450,7 @@ namespace FilterDataGrid
             // Capture current count before filtering
             int previousFilteredCount = FilteredItemsCount;
 
-            // Raise FilteredItemsChanging before applying filters
+            // Raise FilteredItemsChanging before applying the filter
             OnFilteredItemsChanging(new FilteredItemsChangingEventArgs(previousFilteredCount, -1)); // -1 = unknown upcoming count
 
             foreach (FilterCommon filter in filters)
@@ -2483,10 +2487,7 @@ namespace FilterDataGrid
             int currentFilteredCount = FilteredItemsCount;
             OnFilteredItemsChanged(new FilteredItemsChangedEventArgs(previousFilteredCount, currentFilteredCount));
 
-            OnFilterCompleted(new FilterCompletedEventArgs(
-                filters.LastOrDefault(),
-                FilteredItemsCount,
-                ActiveFilters));
+            OnDataChanged();
         }
 
         /// <summary>
@@ -2521,18 +2522,7 @@ namespace FilterDataGrid
     #region Event Args Classes
 
     /// <summary>
-    /// Event arguments for filter completion
-    /// </summary>
-    public class FilterCompletedEventArgs(FilterCommon lastModifiedFilter, int filteredItemsCount, IReadOnlyList<FilterCommon> activeFilters) : EventArgs
-    {
-        public FilterCommon LastModifiedFilter { get; } = lastModifiedFilter;
-        public int FilteredItemsCount { get; } = filteredItemsCount;
-        public IReadOnlyList<FilterCommon> ActiveFilters { get; } = activeFilters;
-        public DateTime Timestamp { get; } = DateTime.Now;
-    }
-
-    /// <summary>
-    /// Event arguments for ItemsSource changing
+    /// Event arguments for items source changing
     /// </summary>
     public class ItemsSourceChangingEventArgs(IEnumerable oldSource, IEnumerable newSource) : EventArgs
     {
@@ -2542,7 +2532,7 @@ namespace FilterDataGrid
     }
 
     /// <summary>
-    /// Event arguments for ItemsSource changed complete
+    /// Event arguments for items source changed complete
     /// </summary>
     public class ItemsSourceChangedEventArgs(IEnumerable oldSource, IEnumerable newSource, bool stateRestored) : EventArgs
     {
@@ -2567,6 +2557,15 @@ namespace FilterDataGrid
     {
         public int PreviousFilteredItemsCount { get; } = previousFilteredItemsCount;
         public int CurrentFilteredItemsCount { get; } = currentFilteredItemsCount;
+    }
+
+    /// <summary>
+    /// Event arguments for data changes
+    /// Raised whenever ItemsSource or filtered items change
+    /// </summary>
+    public class DataChangedEventArgs : EventArgs
+    {
+        public DateTime Timestamp { get; } = DateTime.Now;
     }
 
     #endregion Event Args Classes
