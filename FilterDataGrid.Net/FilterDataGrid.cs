@@ -15,11 +15,11 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Specialized;
-using System.Reflection;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using System.Windows;
@@ -192,6 +192,23 @@ namespace FilterDataGrid
 
         public event EventHandler Sorted;
 
+        /// <summary>
+        /// Raised when filter operation is completed (apply or remove filter)
+        /// Includes information about active filters and filtered item count
+        /// </summary>
+        public event EventHandler<FilterCompletedEventArgs> FilterCompleted;
+
+        /// <summary>
+        /// Raised before ItemsSource is about to change
+        /// Allows cancellation of state preservation
+        /// </summary>
+        public event EventHandler<ItemsSourceChangingEventArgs> ItemsSourceChanging;
+
+        /// <summary>
+        /// Raised after ItemsSource has changed and state has been restored (if enabled)
+        /// </summary>
+        public event EventHandler<ItemsSourceChangedEventArgs> ItemsSourceChangedComplete;
+
         #endregion Public Event
 
         #region Private Constants
@@ -258,6 +275,13 @@ namespace FilterDataGrid
         private bool startsWith;
 
         private readonly Dictionary<string, Predicate<object>> criteria = new();
+
+        private bool isPreservingState;
+        private object selectedItemBeforeChange;
+        private int selectedIndexBeforeChange;
+        private double verticalOffsetBeforeChange;
+        private double horizontalOffsetBeforeChange;
+        private List<FilterCommon> filterStateBeforeChange;
 
         #endregion Private Fields
 
@@ -423,6 +447,41 @@ namespace FilterDataGrid
             get => (Brush)GetValue(FilterPopupBackgroundProperty);
             set => SetValue(FilterPopupBackgroundProperty, value);
         }
+
+        /// <summary>
+        /// Gets the current active filters as a read-only collection
+        /// </summary>
+        public IReadOnlyList<FilterCommon> ActiveFilters => GlobalFilterList.AsReadOnly();
+
+        /// <summary>
+        /// Gets the current filtered items from the CollectionView
+        /// Returns the filtered view of the ItemsSource
+        /// </summary>
+        public IEnumerable FilteredItems => CollectionViewSource ?? Items;
+
+        /// <summary>
+        /// Gets the count of filtered items
+        /// </summary>
+        public int FilteredItemsCount
+        {
+            get
+            {
+                if (CollectionViewSource == null) return Items.Count;
+
+                int count = 0;
+                foreach (object item in CollectionViewSource)
+                {
+                    count++;
+                }
+                return count;
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets whether to preserve filter and view state when ItemsSource changes
+        /// Default is true
+        /// </summary>
+        public bool PreserveStateOnItemsSourceChange { get; set; } = true;
 
         #endregion Public Properties
 
@@ -612,6 +671,19 @@ namespace FilterDataGrid
         {
             Debug.WriteLineIf(DebugMode, $"\nOnItemsSourceChanged Auto : {AutoGenerateColumns}");
 
+            // Handle state preservation
+            if (PreserveStateOnItemsSourceChange && oldValue != null && newValue != null)
+            {
+                ItemsSourceChangingEventArgs changingArgs = new ItemsSourceChangingEventArgs(oldValue, newValue);
+                OnItemsSourceChanging(changingArgs);
+
+                if (!changingArgs.Cancel)
+                {
+                    CaptureCurrentState();
+                    isPreservingState = true;
+                }
+            }
+
             base.OnItemsSourceChanged(oldValue, newValue);
 
             try
@@ -702,6 +774,22 @@ namespace FilterDataGrid
                 // when "IsReadOnly" is set to "False", "CanRemoveAllFilter" is not re-evaluated,
                 // the "Remove All Filters" icon remains active
                 CommandManager.InvalidateRequerySuggested();
+
+                // Restore state if preservation was active
+                if (isPreservingState && newValue != null)
+                {
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        RestoreState();
+                        isPreservingState = false;
+
+                        OnItemsSourceChangedComplete(new ItemsSourceChangedEventArgs(oldValue, newValue, true));
+                    }), DispatcherPriority.Loaded);
+                }
+                else if (newValue != null)
+                {
+                    OnItemsSourceChangedComplete(new ItemsSourceChangedEventArgs(oldValue, newValue, false));
+                }
             }
             catch (Exception ex)
             {
@@ -778,12 +866,104 @@ namespace FilterDataGrid
 
                 // empty json file
                 if (PersistentFilter) SavePreset();
+
+                // Raise FilterCompleted event
+                OnFilterCompleted(new FilterCompletedEventArgs(null, FilteredItemsCount, ActiveFilters));
             }
             catch (Exception ex)
             {
                 Debug.WriteLineIf(DebugMode, $"RemoveFilters error : {ex.Message}");
                 throw;
             }
+        }
+
+        /// <summary>
+        /// Gets the current filter state as a serializable object
+        /// Can be used to save/restore filter state programmatically
+        /// </summary>
+        /// <returns>Filter state data that can be serialized</returns>
+        public FilterStateData GetCurrentFilterState()
+        {
+            FilterStateData stateData = new FilterStateData
+            {
+                Filters = new List<FilterData>()
+            };
+
+            IReadOnlyList<FilterCommon> activeFilters = ActiveFilters;
+
+            foreach (FilterCommon filter in activeFilters)
+            {
+                FilterData filterData = new FilterData
+                {
+                    FieldName = filter.FieldName,
+                    FieldTypeName = filter.FieldType?.AssemblyQualifiedName,
+                    FilteredItems = filter.PreviouslyFilteredItems.ToList()
+                };
+
+                stateData.Filters.Add(filterData);
+            }
+
+            return stateData;
+        }
+
+        /// <summary>
+        /// Applies filters programmatically from filter state data
+        /// </summary>
+        /// <param name="filterState">The filter state to apply</param>
+        public void ApplyFilterState(FilterStateData filterState)
+        {
+            if (filterState == null || filterState.Filters == null || filterState.Filters.Count == 0)
+            {
+                RemoveFilters();
+                return;
+            }
+
+            // Clear existing filters first
+            RemoveFilters();
+
+            List<FilterCommon> filtersToApply = new List<FilterCommon>();
+
+            foreach (FilterData filterData in filterState.Filters)
+            {
+                Type fieldType = null;
+                if (!string.IsNullOrEmpty(filterData.FieldTypeName))
+                {
+                    fieldType = Type.GetType(filterData.FieldTypeName);
+                }
+
+                if (fieldType == null) continue;
+
+                FilterCommon filter = new FilterCommon
+                {
+                    FieldName = filterData.FieldName,
+                    FieldType = fieldType,
+                    Translate = Translate,
+                    PreviouslyFilteredItems = filterData.FilteredItems.ToHashSet()
+                };
+
+                filtersToApply.Add(filter);
+            }
+
+            // Apply filters through the internal mechanism
+            ApplyFiltersInternal(filtersToApply);
+        }
+
+        /// <summary>
+        /// Creates a filter builder for programmatic filter construction
+        /// </summary>
+        /// <returns>A new filter builder instance</returns>
+        public FilterBuilder CreateFilterBuilder()
+        {
+            return new FilterBuilder(this);
+        }
+
+        /// <summary>
+        /// Refreshes the current filter without changing filter state
+        /// Useful when ItemsSource data has been modified
+        /// </summary>
+        public void RefreshFilter()
+        {
+            CollectionViewSource?.Refresh();
         }
 
         #endregion Public Methods
@@ -2016,6 +2196,9 @@ namespace FilterDataGrid
 
                 Debug.WriteLineIf(DebugMode, $@"ApplyFilterCommand Elapsed time : {ElapsedTime:mm\:ss\.ff}");
             }
+
+            // Raise FilterCompleted event
+            OnFilterCompleted(new FilterCompletedEventArgs(null, FilteredItemsCount, ActiveFilters));
         }
 
         /// <summary>
@@ -2113,6 +2296,345 @@ namespace FilterDataGrid
                     row.Header = $"{i + 1}";
         }
 
+        /// <summary>
+        /// Raises the FilterCompleted event
+        /// </summary>
+        private void OnFilterCompleted(FilterCompletedEventArgs e)
+        {
+            FilterCompleted?.Invoke(this, e);
+        }
+
+        /// <summary>
+        /// Raises the ItemsSourceChanging event
+        /// </summary>
+        private void OnItemsSourceChanging(ItemsSourceChangingEventArgs e)
+        {
+            ItemsSourceChanging?.Invoke(this, e);
+        }
+
+        /// <summary>
+        /// Raises the ItemsSourceChangedComplete event
+        /// </summary>
+        private void OnItemsSourceChangedComplete(ItemsSourceChangedEventArgs e)
+        {
+            ItemsSourceChangedComplete?.Invoke(this, e);
+        }
+
+        /// <summary>
+        /// Captures current state before ItemsSource change
+        /// </summary>
+        private void CaptureCurrentState()
+        {
+            // Capture selected item/index
+            selectedItemBeforeChange = SelectedItem;
+            selectedIndexBeforeChange = SelectedIndex;
+
+            // Capture scroll position
+            ScrollViewer scrollViewer = VisualTreeHelpers.FindChild<ScrollViewer>(this);
+            if (scrollViewer != null)
+            {
+                verticalOffsetBeforeChange = scrollViewer.VerticalOffset;
+                horizontalOffsetBeforeChange = scrollViewer.HorizontalOffset;
+            }
+
+            // Capture filter state
+            filterStateBeforeChange = new List<FilterCommon>();
+            IReadOnlyList<FilterCommon> activeFilters = ActiveFilters;
+
+            foreach (FilterCommon filter in activeFilters)
+            {
+                FilterCommon filterCopy = new FilterCommon
+                {
+                    FieldName = filter.FieldName,
+                    FieldType = filter.FieldType,
+                    PreviouslyFilteredItems = new HashSet<object>(filter.PreviouslyFilteredItems)
+                };
+                filterStateBeforeChange.Add(filterCopy);
+            }
+        }
+
+        /// <summary>
+        /// Restores state after ItemsSource change
+        /// </summary>
+        private void RestoreState()
+        {
+            // Restore filters
+            if (filterStateBeforeChange != null && filterStateBeforeChange.Count > 0)
+            {
+                ApplyFiltersInternal(filterStateBeforeChange);
+            }
+
+            // Restore selected item
+            if (selectedItemBeforeChange != null)
+            {
+                SelectedItem = Items.Cast<object>().FirstOrDefault(item =>
+                    ItemsAreEqual(item, selectedItemBeforeChange));
+
+                if (SelectedItem == null && selectedIndexBeforeChange >= 0 && selectedIndexBeforeChange < Items.Count)
+                {
+                    SelectedIndex = selectedIndexBeforeChange;
+                }
+            }
+
+            // Restore scroll position
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                ScrollViewer scrollViewer = VisualTreeHelpers.FindChild<ScrollViewer>(this);
+                if (scrollViewer != null)
+                {
+                    scrollViewer.ScrollToVerticalOffset(verticalOffsetBeforeChange);
+                    scrollViewer.ScrollToHorizontalOffset(horizontalOffsetBeforeChange);
+                }
+            }), DispatcherPriority.Loaded);
+        }
+
+        /// <summary>
+        /// Applies filters internally without using reflection (direct access to private members)
+        /// </summary>
+        private void ApplyFiltersInternal(List<FilterCommon> filters)
+        {
+            if (filters == null || filters.Count == 0) return;
+
+            foreach (FilterCommon filter in filters)
+            {
+                DataGridColumn column = Columns.FirstOrDefault(c =>
+                    (c is IDataGridColumn dgc && dgc.FieldName == filter.FieldName));
+
+                if (column == null) continue;
+
+                Button filterButton = VisualTreeHelpers.GetHeader(column, this)
+                    ?.FindVisualChild<Button>(FilterButtonKey);
+
+                filter.FilterButton = filterButton;
+                filter.Translate = Translate;
+
+                if (!filter.IsFiltered)
+                {
+                    filter.AddFilter(criteria);
+                }
+
+                if (GlobalFilterList.All(f => f.FieldName != filter.FieldName))
+                {
+                    GlobalFilterList.Add(filter);
+                }
+
+                if (filterButton != null)
+                {
+                    FilterState.SetIsFiltered(filterButton, true);
+                }
+            }
+
+            RefreshFilter();
+
+            OnFilterCompleted(new FilterCompletedEventArgs(
+                filters.LastOrDefault(),
+                FilteredItemsCount,
+                ActiveFilters));
+        }
+
+        /// <summary>
+        /// Checks if two items are equal for selection restoration
+        /// </summary>
+        private bool ItemsAreEqual(object item1, object item2)
+        {
+            if (item1 == null || item2 == null) return false;
+            if (item1.Equals(item2)) return true;
+
+            // Try to compare by key properties if available
+            Type itemType = item1.GetType();
+            PropertyInfo[] properties = itemType.GetProperties();
+
+            PropertyInfo idProperty = properties.FirstOrDefault(p =>
+                p.Name.Equals("Id", StringComparison.OrdinalIgnoreCase) ||
+                p.Name.Equals($"{itemType.Name}Id", StringComparison.OrdinalIgnoreCase));
+
+            if (idProperty != null)
+            {
+                object id1 = idProperty.GetValue(item1);
+                object id2 = idProperty.GetValue(item2);
+                return id1 != null && id1.Equals(id2);
+            }
+
+            return false;
+        }
+
         #endregion Private Methods
     }
+
+    #region Event Args Classes
+
+    /// <summary>
+    /// Event arguments for filter completion
+    /// </summary>
+    public class FilterCompletedEventArgs : EventArgs
+    {
+        public FilterCompletedEventArgs(FilterCommon lastModifiedFilter, int filteredItemsCount, IReadOnlyList<FilterCommon> activeFilters)
+        {
+            LastModifiedFilter = lastModifiedFilter;
+            FilteredItemsCount = filteredItemsCount;
+            ActiveFilters = activeFilters;
+            Timestamp = DateTime.Now;
+        }
+
+        public FilterCommon LastModifiedFilter { get; }
+        public int FilteredItemsCount { get; }
+        public IReadOnlyList<FilterCommon> ActiveFilters { get; }
+        public DateTime Timestamp { get; }
+    }
+
+    /// <summary>
+    /// Event arguments for ItemsSource changing
+    /// </summary>
+    public class ItemsSourceChangingEventArgs : EventArgs
+    {
+        public ItemsSourceChangingEventArgs(IEnumerable oldSource, IEnumerable newSource)
+        {
+            OldSource = oldSource;
+            NewSource = newSource;
+            Cancel = false;
+        }
+
+        public IEnumerable OldSource { get; }
+        public IEnumerable NewSource { get; }
+        public bool Cancel { get; set; }
+    }
+
+    /// <summary>
+    /// Event arguments for ItemsSource changed complete
+    /// </summary>
+    public class ItemsSourceChangedEventArgs : EventArgs
+    {
+        public ItemsSourceChangedEventArgs(IEnumerable oldSource, IEnumerable newSource, bool stateRestored)
+        {
+            OldSource = oldSource;
+            NewSource = newSource;
+            StateRestored = stateRestored;
+        }
+
+        public IEnumerable OldSource { get; }
+        public IEnumerable NewSource { get; }
+        public bool StateRestored { get; }
+    }
+
+    #endregion Event Args Classes
+
+    #region Filter Data Classes
+
+    /// <summary>
+    /// Serializable filter state data
+    /// </summary>
+    [Serializable]
+    public class FilterStateData
+    {
+        public List<FilterData> Filters { get; set; }
+    }
+
+    /// <summary>
+    /// Serializable filter data
+    /// </summary>
+    [Serializable]
+    public class FilterData
+    {
+        public string FieldName { get; set; }
+        public string FieldTypeName { get; set; }
+        public List<object> FilteredItems { get; set; }
+    }
+
+    #endregion Filter Data Classes
+
+    #region Filter Builder
+
+    /// <summary>
+    /// Builder class for programmatic filter construction
+    /// </summary>
+    public class FilterBuilder
+    {
+        private readonly FilterDataGrid grid;
+        private readonly List<FilterData> filters;
+
+        public FilterBuilder(FilterDataGrid grid)
+        {
+            this.grid = grid;
+            filters = new List<FilterData>();
+        }
+
+        /// <summary>
+        /// Adds a filter for a specific column
+        /// </summary>
+        /// <param name="fieldName">The field name to filter</param>
+        /// <param name="excludedValues">Values to exclude from the view</param>
+        /// <returns>The filter builder for chaining</returns>
+        public FilterBuilder AddFilter(string fieldName, params object[] excludedValues)
+        {
+            DataGridColumn column = grid.Columns.FirstOrDefault(c =>
+                c is IDataGridColumn dgc && dgc.FieldName == fieldName) ?? throw new ArgumentException($"Column with field name '{fieldName}' not found.", nameof(fieldName));
+            PropertyInfo fieldProperty = grid.CollectionType?.GetPropertyInfo(fieldName);
+            Type fieldType = null;
+
+            if (fieldProperty != null)
+            {
+                fieldType = Nullable.GetUnderlyingType(fieldProperty.PropertyType) ?? fieldProperty.PropertyType;
+            }
+
+            if (fieldType == null)
+            {
+                throw new InvalidOperationException($"Cannot determine field type for '{fieldName}'.");
+            }
+
+            FilterData filterData = new FilterData
+            {
+                FieldName = fieldName,
+                FieldTypeName = fieldType.AssemblyQualifiedName,
+                FilteredItems = new List<object>(excludedValues)
+            };
+
+            filters.Add(filterData);
+            return this;
+        }
+
+        /// <summary>
+        /// Adds a filter to include only specific values
+        /// </summary>
+        /// <param name="fieldName">The field name to filter</param>
+        /// <param name="includedValues">Values to include in the view</param>
+        /// <returns>The filter builder for chaining</returns>
+        public FilterBuilder AddIncludeFilter(string fieldName, params object[] includedValues)
+        {
+            // Get all distinct values for the field
+            List<object> allValues = grid.Items.Cast<object>()
+                .Select(item => item.GetPropertyValue(fieldName))
+                .Distinct()
+                .ToList();
+
+            // Exclude everything except included values
+            List<object> excludedValues = allValues.Except(includedValues).ToList();
+
+            return AddFilter(fieldName, excludedValues.ToArray());
+        }
+
+        /// <summary>
+        /// Applies all filters built with this builder
+        /// </summary>
+        public void Apply()
+        {
+            FilterStateData stateData = new FilterStateData
+            {
+                Filters = filters
+            };
+
+            grid.ApplyFilterState(stateData);
+        }
+
+        /// <summary>
+        /// Clears all filters from the builder
+        /// </summary>
+        /// <returns>The filter builder for chaining</returns>
+        public FilterBuilder Clear()
+        {
+            filters.Clear();
+            return this;
+        }
+    }
+
+    #endregion Filter Builder
 }
