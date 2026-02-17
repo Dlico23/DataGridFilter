@@ -2337,7 +2337,7 @@ namespace FilterDataGrid
         private void OnItemsSourceChanged(ItemsSourceChangedEventArgs e)
         {
             ItemsSourceChanged?.Invoke(this, e);
-            
+
             // Raise unified DataChanged event
             OnDataChanged();
         }
@@ -2358,7 +2358,7 @@ namespace FilterDataGrid
         private void OnFilteredItemsChanged(FilteredItemsChangedEventArgs e)
         {
             FilteredItemsChanged?.Invoke(this, e);
-            
+
             // Raise unified DataChanged event
             OnDataChanged();
         }
