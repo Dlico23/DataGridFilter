@@ -5,7 +5,7 @@
 // Projet     : FilterDataGrid.Net
 // File       : Loc.cs
 // Created    : 03/04/2024
-// 
+//
 
 #endregion
 
@@ -187,12 +187,9 @@ namespace FilterDataGrid
             {
                 language = value;
 
-                var type = typeof(Loc);
-                var propertyInfo =
-                    type.GetProperty(
-                        Enum.GetName(typeof(Local), language) ??
-                        throw new ArgumentException("Language is required", nameof(Local)),
-                        BindingFlags.Static | BindingFlags.NonPublic);
+                Type type = typeof(Loc);
+                string enumName = Enum.GetName(typeof(Local), language) ?? throw new ArgumentException("Language is required", nameof(Local));
+                PropertyInfo propertyInfo = type.GetProperty(enumName, BindingFlags.Static | BindingFlags.NonPublic);
 
                 if (propertyInfo == null) return;
                 SelectedLanguage = (ILanguageDictionary)propertyInfo.GetValue(null);
