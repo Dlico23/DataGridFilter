@@ -51,7 +51,7 @@ namespace FilterDataGrid
                 return result;
             }
 
-            set => PreviouslyFilteredItems = value.ToHashSet();
+            set => PreviouslyFilteredItems = [.. value];
         }
 
         [DataMember(Name = "FieldName")]

@@ -274,7 +274,7 @@ namespace FilterDataGrid
 
         private bool startsWith;
 
-        private readonly Dictionary<string, Predicate<object>> criteria = new();
+        private readonly Dictionary<string, Predicate<object>> criteria = [];
 
         private bool isPreservingState;
         private object selectedItemBeforeChange;
@@ -396,7 +396,7 @@ namespace FilterDataGrid
         /// </summary>
         public List<FilterItemDate> TreeViewItems
         {
-            get => treeView ?? new List<FilterItemDate>();
+            get => treeView ?? [];
             set
             {
                 treeView = value;
@@ -409,7 +409,7 @@ namespace FilterDataGrid
         /// </summary>
         public List<FilterItem> ListBoxItems
         {
-            get => listBoxItems ?? new List<FilterItem>();
+            get => listBoxItems ?? [];
             set
             {
                 listBoxItems = value;
@@ -490,7 +490,7 @@ namespace FilterDataGrid
         private FilterCommon CurrentFilter { get; set; }
         private ICollectionView CollectionViewSource { get; set; }
         private ICollectionView ItemCollectionView { get; set; }
-        private List<FilterCommon> GlobalFilterList { get; } = new List<FilterCommon>();
+        private List<FilterCommon> GlobalFilterList { get; } = [];
 
         /// <summary>
         /// Popup filtered items (ListBox/TreeView)
@@ -533,8 +533,8 @@ namespace FilterDataGrid
                 // fill excluded Fields list with values
                 if (AutoGenerateColumns)
                 {
-                    excludedFields = ExcludeFields.Split(',').Select(p => p.Trim()).ToList();
-                    excludedColumns = ExcludeColumns.Split(',').Select(p => p.Trim()).ToList();
+                    excludedFields = [.. ExcludeFields.Split(',').Select(p => p.Trim())];
+                    excludedColumns = [.. ExcludeColumns.Split(',').Select(p => p.Trim())];
                 }
                 // generating custom columns
                 else if (CollectionType != null) GeneratingCustomsColumn();
@@ -674,7 +674,7 @@ namespace FilterDataGrid
             // Handle state preservation
             if (PreserveStateOnItemsSourceChange && oldValue != null && newValue != null)
             {
-                ItemsSourceChangingEventArgs changingArgs = new ItemsSourceChangingEventArgs(oldValue, newValue);
+                ItemsSourceChangingEventArgs changingArgs = new(oldValue, newValue);
                 OnItemsSourceChanging(changingArgs);
 
                 if (!changingArgs.Cancel)
@@ -884,20 +884,20 @@ namespace FilterDataGrid
         /// <returns>Filter state data that can be serialized</returns>
         public FilterStateData GetCurrentFilterState()
         {
-            FilterStateData stateData = new FilterStateData
+            FilterStateData stateData = new()
             {
-                Filters = new List<FilterData>()
+                Filters = []
             };
 
             IReadOnlyList<FilterCommon> activeFilters = ActiveFilters;
 
             foreach (FilterCommon filter in activeFilters)
             {
-                FilterData filterData = new FilterData
+                FilterData filterData = new()
                 {
                     FieldName = filter.FieldName,
                     FieldTypeName = filter.FieldType?.AssemblyQualifiedName,
-                    FilteredItems = filter.PreviouslyFilteredItems.ToList()
+                    FilteredItems = [.. filter.PreviouslyFilteredItems]
                 };
 
                 stateData.Filters.Add(filterData);
@@ -921,7 +921,7 @@ namespace FilterDataGrid
             // Clear existing filters first
             RemoveFilters();
 
-            List<FilterCommon> filtersToApply = new List<FilterCommon>();
+            List<FilterCommon> filtersToApply = [];
 
             foreach (FilterData filterData in filterState.Filters)
             {
@@ -933,12 +933,12 @@ namespace FilterDataGrid
 
                 if (fieldType == null) continue;
 
-                FilterCommon filter = new FilterCommon
+                FilterCommon filter = new()
                 {
                     FieldName = filterData.FieldName,
                     FieldType = fieldType,
                     Translate = Translate,
-                    PreviouslyFilteredItems = filterData.FilteredItems.ToHashSet()
+                    PreviouslyFilteredItems = [.. filterData.FilteredItems]
                 };
 
                 filtersToApply.Add(filter);
@@ -1021,37 +1021,30 @@ namespace FilterDataGrid
                 foreach (FilterCommon preset in filterPreset)
                 {
                     // Get columns that match the preset field name and are filterable
-                    List<DataGridColumn> columns = Columns
+                    List<DataGridColumn> columns = [.. Columns
                         .Where(c =>
                             (c is DataGridTextColumn dtx && dtx.IsColumnFiltered && dtx.FieldName == preset.FieldName)
                             || (c is DataGridTemplateColumn dtp && dtp.IsColumnFiltered && dtp.FieldName == preset.FieldName)
                             || (c is DataGridCheckBoxColumn dck && dck.IsColumnFiltered && dck.FieldName == preset.FieldName)
                             || (c is DataGridNumericColumn dnm && dnm.IsColumnFiltered && dnm.FieldName == preset.FieldName)
-                            || (c is DataGridComboBoxColumn cmb && cmb.IsColumnFiltered && cmb.FieldName == preset.FieldName))
-                        .ToList();
+                            || (c is DataGridComboBoxColumn cmb && cmb.IsColumnFiltered && cmb.FieldName == preset.FieldName))];
 
                     foreach (DataGridColumn col in columns)
                     {
                         // Get distinct values from the ItemsSource for the current column
                         List<object> sourceObjectList = preset.FieldType == typeof(DateTime)
-                            ? Items.Cast<object>()
+                            ? [.. Items.Cast<object>()
                                 .Select(x => (object)((DateTime?)x.GetPropertyValue(preset.FieldName))?.Date)
-                                .Distinct()
-                                .ToList()
-                            : Items.Cast<object>()
+                                .Distinct()]
+                            : [.. Items.Cast<object>()
                                 .Select(x => x.GetPropertyValue(preset.FieldName))
-                                .Distinct()
-                                .ToList();
+                                .Distinct()];
 
                         // Convert previously filtered items to the correct type
-                        preset.PreviouslyFilteredItems = preset.PreviouslyFilteredItems
-                            .Select(o => ConvertToType(o, preset.FieldType))
-                            .ToHashSet();
+                        preset.PreviouslyFilteredItems = [.. preset.PreviouslyFilteredItems.Select(o => ConvertToType(o, preset.FieldType))];
 
                         // Get the items that are always present in the source collection
-                        preset.FilteredItems = sourceObjectList
-                            .Where(c => preset.PreviouslyFilteredItems.Contains(c))
-                            .ToList();
+                        preset.FilteredItems = [.. sourceObjectList.Where(c => preset.PreviouslyFilteredItems.Contains(c))];
 
                         // if no items are filtered, continue to the next column
                         if (preset.FilteredItems.Count == 0)
@@ -1169,21 +1162,21 @@ namespace FilterDataGrid
         /// <returns>A list of FilterItemDate representing the tree structure.</returns>
         private async Task<List<FilterItemDate>> BuildTreeAsync(IEnumerable<FilterItem> dates)
         {
-            List<FilterItemDate> tree = new()
-            {
+            List<FilterItemDate> tree =
+            [
                 new FilterItemDate
                 {
                     Label = Translate.All, Level = SelectAllLevel, Initialize = true, FieldType = fieldType
                 }
-            };
+            ];
 
             if (dates == null) return tree;
 
             try
             {
-                List<FilterItem> dateTimes = dates.Where(x => x.Level > SelectAllLevel).ToList();
+                List<FilterItem> dateTimes = [.. dates.Where(x => x.Level > SelectAllLevel)];
 
-                List<FilterItemDate> years = dateTimes.GroupBy(
+                List<FilterItemDate> years = [.. dateTimes.GroupBy(
                     x => ((DateTime)x.Content).Year,
                     (key, group) => new FilterItemDate
                     {
@@ -1192,7 +1185,7 @@ namespace FilterDataGrid
                         Label = key.ToString(Translate.Culture),
                         Initialize = true,
                         FieldType = fieldType,
-                        Children = group.GroupBy(
+                        Children = [.. group.GroupBy(
                             x => ((DateTime)x.Content).Month,
                             (monthKey, monthGroup) => new FilterItemDate
                             {
@@ -1201,7 +1194,7 @@ namespace FilterDataGrid
                                 Label = new DateTime(key, monthKey, 1).ToString("MMMM", Translate.Culture),
                                 Initialize = true,
                                 FieldType = fieldType,
-                                Children = monthGroup.Select(x => new FilterItemDate
+                                Children = [.. monthGroup.Select(x => new FilterItemDate
                                 {
                                     Level = 3,
                                     Content = ((DateTime)x.Content).Day,
@@ -1209,9 +1202,9 @@ namespace FilterDataGrid
                                     Initialize = true,
                                     FieldType = fieldType,
                                     Item = x
-                                }).ToList()
-                            }).ToList()
-                    }).ToList();
+                                })]
+                            })]
+                    })];
 
                 foreach (FilterItemDate year in years)
                 {
@@ -1250,7 +1243,7 @@ namespace FilterDataGrid
                         FieldType = fieldType,
                         Initialize = emptyItem.IsChecked,
                         Item = emptyItem,
-                        Children = new List<FilterItemDate>()
+                        Children = []
                     });
                 }
 
@@ -1687,8 +1680,8 @@ namespace FilterDataGrid
             Cursor = cursor;
 
             // once the popup is closed, this is no longer necessary
-            ListBoxItems = new List<FilterItem>();
-            TreeViewItems = new List<FilterItemDate>();
+            ListBoxItems = [];
+            TreeViewItems = [];
 
             // re-enable columnHeadersPresenter
             if (columnHeadersPresenter != null)
@@ -1811,7 +1804,7 @@ namespace FilterDataGrid
             {
                 // searchText is not empty
                 // populate the tree only with items found by the search
-                List<FilterItem> items = PopupViewItems.Where(i => i.IsChecked).ToList();
+                List<FilterItem> items = [.. PopupViewItems.Where(i => i.IsChecked)];
 
                 // if at least one element is not null, fill the tree, otherwise the tree contains only the element (select all).
                 TreeViewItems = await BuildTreeAsync(items.Any() ? items : null);
@@ -1940,25 +1933,23 @@ namespace FilterDataGrid
                     if (fieldType == typeof(DateTime))
                     {
                         // possible distinct values because time part is removed
-                        sourceObjectList = Items.Cast<object>()
+                        sourceObjectList = [.. Items.Cast<object>()
                             .Where(x => !(x is DataGridRow) && !CollectionView.NewItemPlaceholder.Equals(x))
                             .Select(x => (object)((DateTime?)x.GetPropertyValue(fieldName))?.Date)
-                            .Distinct()
-                            .ToList();
+                            .Distinct()];
                     }
                     else
                     {
-                        sourceObjectList = Items.Cast<object>()
+                        sourceObjectList = [.. Items.Cast<object>()
                             .Where(x => !(x is DataGridRow) && !CollectionView.NewItemPlaceholder.Equals(x))
                             .Select(x => x.GetPropertyValue(fieldName))
-                            .Distinct()
-                            .ToList();
+                            .Distinct()];
                     }
 
                     // adds the previous filtered items to the list of new items (CurrentFilter.PreviouslyFilteredItems)
                     if (lastFilter == CurrentFilter.FieldName)
                     {
-                        sourceObjectList.AddRange(CurrentFilter?.PreviouslyFilteredItems ?? new HashSet<object>());
+                        sourceObjectList.AddRange(CurrentFilter?.PreviouslyFilteredItems ?? []);
                     }
 
                     // empty item flag
@@ -2108,10 +2099,10 @@ namespace FilterDataGrid
                         blankIsChanged.IsChanged = !previousFiltered.Any(c => c != null && c.Equals(string.Empty));
 
                         // result of the research
-                        List<FilterItem> searchResult = PopupViewItems.Where(c => c.IsChecked).ToList();
+                        List<FilterItem> searchResult = [.. PopupViewItems.Where(c => c.IsChecked)];
 
                         // unchecked : all items except searchResult
-                        List<FilterItem> uncheckedItems = SourcePopupViewItems.Except(searchResult).ToList();
+                        List<FilterItem> uncheckedItems = [.. SourcePopupViewItems.Except(searchResult)];
                         uncheckedItems.AddRange(searchResult.Where(c => c.IsChecked == false));
 
                         previousFiltered.ExceptWith(searchResult.Select(c => c.Content));
@@ -2120,10 +2111,10 @@ namespace FilterDataGrid
                     else
                     {
                         // changed popup items
-                        List<FilterItem> changedItems = PopupViewItems.Where(c => c.IsChanged).ToList();
+                        List<FilterItem> changedItems = [.. PopupViewItems.Where(c => c.IsChanged)];
 
                         IEnumerable<FilterItem> checkedItems = changedItems.Where(c => c.IsChecked);
-                        List<FilterItem> uncheckedItems = changedItems.Where(c => !c.IsChecked).ToList();
+                        List<FilterItem> uncheckedItems = [.. changedItems.Where(c => !c.IsChecked)];
 
                         // previous item except unchecked items checked again
                         previousFiltered.ExceptWith(checkedItems.Select(c => c.Content));
@@ -2263,7 +2254,7 @@ namespace FilterDataGrid
                 grid.MinHeight = grid.MaxHeight == 0 ? grid.MinHeight : grid.MaxHeight;
 
                 // greater than or equal to 0.0
-                double MaxSize(double size)
+                static double MaxSize(double size)
                 {
                     return size >= 0.0d ? size : 0.0d;
                 }
@@ -2338,16 +2329,16 @@ namespace FilterDataGrid
             }
 
             // Capture filter state
-            filterStateBeforeChange = new List<FilterCommon>();
+            filterStateBeforeChange = [];
             IReadOnlyList<FilterCommon> activeFilters = ActiveFilters;
 
             foreach (FilterCommon filter in activeFilters)
             {
-                FilterCommon filterCopy = new FilterCommon
+                FilterCommon filterCopy = new()
                 {
                     FieldName = filter.FieldName,
                     FieldType = filter.FieldType,
-                    PreviouslyFilteredItems = new HashSet<object>(filter.PreviouslyFilteredItems)
+                    PreviouslyFilteredItems = [.. filter.PreviouslyFilteredItems]
                 };
                 filterStateBeforeChange.Add(filterCopy);
             }
@@ -2466,54 +2457,32 @@ namespace FilterDataGrid
     /// <summary>
     /// Event arguments for filter completion
     /// </summary>
-    public class FilterCompletedEventArgs : EventArgs
+    public class FilterCompletedEventArgs(FilterCommon lastModifiedFilter, int filteredItemsCount, IReadOnlyList<FilterCommon> activeFilters) : EventArgs
     {
-        public FilterCompletedEventArgs(FilterCommon lastModifiedFilter, int filteredItemsCount, IReadOnlyList<FilterCommon> activeFilters)
-        {
-            LastModifiedFilter = lastModifiedFilter;
-            FilteredItemsCount = filteredItemsCount;
-            ActiveFilters = activeFilters;
-            Timestamp = DateTime.Now;
-        }
-
-        public FilterCommon LastModifiedFilter { get; }
-        public int FilteredItemsCount { get; }
-        public IReadOnlyList<FilterCommon> ActiveFilters { get; }
-        public DateTime Timestamp { get; }
+        public FilterCommon LastModifiedFilter { get; } = lastModifiedFilter;
+        public int FilteredItemsCount { get; } = filteredItemsCount;
+        public IReadOnlyList<FilterCommon> ActiveFilters { get; } = activeFilters;
+        public DateTime Timestamp { get; } = DateTime.Now;
     }
 
     /// <summary>
     /// Event arguments for ItemsSource changing
     /// </summary>
-    public class ItemsSourceChangingEventArgs : EventArgs
+    public class ItemsSourceChangingEventArgs(IEnumerable oldSource, IEnumerable newSource) : EventArgs
     {
-        public ItemsSourceChangingEventArgs(IEnumerable oldSource, IEnumerable newSource)
-        {
-            OldSource = oldSource;
-            NewSource = newSource;
-            Cancel = false;
-        }
-
-        public IEnumerable OldSource { get; }
-        public IEnumerable NewSource { get; }
-        public bool Cancel { get; set; }
+        public IEnumerable OldSource { get; } = oldSource;
+        public IEnumerable NewSource { get; } = newSource;
+        public bool Cancel { get; set; } = false;
     }
 
     /// <summary>
     /// Event arguments for ItemsSource changed complete
     /// </summary>
-    public class ItemsSourceChangedEventArgs : EventArgs
+    public class ItemsSourceChangedEventArgs(IEnumerable oldSource, IEnumerable newSource, bool stateRestored) : EventArgs
     {
-        public ItemsSourceChangedEventArgs(IEnumerable oldSource, IEnumerable newSource, bool stateRestored)
-        {
-            OldSource = oldSource;
-            NewSource = newSource;
-            StateRestored = stateRestored;
-        }
-
-        public IEnumerable OldSource { get; }
-        public IEnumerable NewSource { get; }
-        public bool StateRestored { get; }
+        public IEnumerable OldSource { get; } = oldSource;
+        public IEnumerable NewSource { get; } = newSource;
+        public bool StateRestored { get; } = stateRestored;
     }
 
     #endregion Event Args Classes
@@ -2547,16 +2516,9 @@ namespace FilterDataGrid
     /// <summary>
     /// Builder class for programmatic filter construction
     /// </summary>
-    public class FilterBuilder
+    public class FilterBuilder(FilterDataGrid grid)
     {
-        private readonly FilterDataGrid grid;
-        private readonly List<FilterData> filters;
-
-        public FilterBuilder(FilterDataGrid grid)
-        {
-            this.grid = grid;
-            filters = new List<FilterData>();
-        }
+        private readonly List<FilterData> filters = [];
 
         /// <summary>
         /// Adds a filter for a specific column
@@ -2581,11 +2543,11 @@ namespace FilterDataGrid
                 throw new InvalidOperationException($"Cannot determine field type for '{fieldName}'.");
             }
 
-            FilterData filterData = new FilterData
+            FilterData filterData = new()
             {
                 FieldName = fieldName,
                 FieldTypeName = fieldType.AssemblyQualifiedName,
-                FilteredItems = new List<object>(excludedValues)
+                FilteredItems = [.. excludedValues]
             };
 
             filters.Add(filterData);
@@ -2601,15 +2563,14 @@ namespace FilterDataGrid
         public FilterBuilder AddIncludeFilter(string fieldName, params object[] includedValues)
         {
             // Get all distinct values for the field
-            List<object> allValues = grid.Items.Cast<object>()
+            List<object> allValues = [.. grid.Items.Cast<object>()
                 .Select(item => item.GetPropertyValue(fieldName))
-                .Distinct()
-                .ToList();
+                .Distinct()];
 
             // Exclude everything except included values
-            List<object> excludedValues = allValues.Except(includedValues).ToList();
+            List<object> excludedValues = [.. allValues.Except(includedValues)];
 
-            return AddFilter(fieldName, excludedValues.ToArray());
+            return AddFilter(fieldName, [.. excludedValues]);
         }
 
         /// <summary>
@@ -2617,7 +2578,7 @@ namespace FilterDataGrid
         /// </summary>
         public void Apply()
         {
-            FilterStateData stateData = new FilterStateData
+            FilterStateData stateData = new()
             {
                 Filters = filters
             };

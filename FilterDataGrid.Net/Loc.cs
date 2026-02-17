@@ -562,25 +562,14 @@ namespace FilterDataGrid
     }
 
     // Contributor : dankovics.jozsef
-    internal class LanguageDictionary : ILanguageDictionary
+    internal class LanguageDictionary(string language, CultureInfo culture,
+        Dictionary<TranslatableElements, string> dictionary) : ILanguageDictionary
     {
-        #region Public Constructors
-
-        public LanguageDictionary(string language, CultureInfo culture,
-            Dictionary<TranslatableElements, string> dictionary)
-        {
-            Language = language;
-            Culture = culture;
-            Dictionary = dictionary;
-        }
-
-        #endregion Public Constructors
-
         #region Public Properties
 
-        public CultureInfo Culture { get; }
-        public Dictionary<TranslatableElements, string> Dictionary { get; }
-        public string Language { get; }
+        public CultureInfo Culture { get; } = culture;
+        public Dictionary<TranslatableElements, string> Dictionary { get; } = dictionary;
+        public string Language { get; } = language;
 
         #endregion Public Properties
     }

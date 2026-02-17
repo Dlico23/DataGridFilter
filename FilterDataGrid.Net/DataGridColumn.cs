@@ -210,12 +210,12 @@ namespace FilterDataGrid
             await Dispatcher.InvokeAsync(() =>
             {
                 System.Collections.IEnumerable itemsSource = ItemsSource;
-                List<ItemsSourceMembers> itemsSourceMembers = itemsSource.Cast<object>().Select(x =>
+                List<ItemsSourceMembers> itemsSourceMembers = [.. itemsSource.Cast<object>().Select(x =>
                     new ItemsSourceMembers
                     {
                         SelectedValue = x.GetPropertyValue(SelectedValuePath).ToString(),
                         DisplayMember = x.GetPropertyValue(DisplayMemberPath).ToString()
-                    }).ToList();
+                    })];
 
                 ComboBoxItemsSource = itemsSourceMembers;
             });
@@ -234,7 +234,7 @@ namespace FilterDataGrid
         #endregion Protected Methods
     }
 
-    public class DataGridNumericColumn : DataGridTextColumn
+    public partial class DataGridNumericColumn : DataGridTextColumn
     {
         #region Private Constants
 
@@ -279,13 +279,13 @@ namespace FilterDataGrid
                 case TypeCode.UInt16:
                 case TypeCode.UInt32:
                 case TypeCode.UInt64:
-                    regex = new Regex(UnsignedIntegerPattern, RegexOptions.Compiled);
+                    regex = MyRegex();
                     break;
 
                 case TypeCode.Decimal:
                 case TypeCode.Double:
                 case TypeCode.Single:
-                    string decimalSeparator = stringFormat.Contains("c")
+                    string decimalSeparator = stringFormat.Contains('c')
                         ? Regex.Escape(nfi.CurrencyDecimalSeparator)
                         : Regex.Escape(nfi.NumberDecimalSeparator);
                     regex = new Regex($@"^{Regex.Escape(nfi.NegativeSign)}?(\d+({decimalSeparator}\d*)?|{decimalSeparator}\d*)?$", RegexOptions.Compiled);
@@ -440,6 +440,9 @@ namespace FilterDataGrid
                 e.Handled = !isNumeric;
             }
         }
+
+        [GeneratedRegex(UnsignedIntegerPattern, RegexOptions.Compiled)]
+        private static partial Regex MyRegex();
 
         #endregion Private Methods
     }

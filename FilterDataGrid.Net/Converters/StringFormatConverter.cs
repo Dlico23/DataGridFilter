@@ -59,7 +59,7 @@ namespace FilterDataGrid.Converters
                     culture = lastValue != null ? (CultureInfo)lastValue : culture;
                 }
 
-                object[] formatArgs = values.Skip(1).ToArray();
+                object[] formatArgs = [.. values.Skip(1)];
                 return string.Format(culture, stringFormat, formatArgs);
             }
             catch (FormatException ex)
