@@ -1963,14 +1963,14 @@ namespace FilterDataGrid
                     {
                         // possible distinct values because time part is removed
                         sourceObjectList = [.. Items.Cast<object>()
-                            .Where(x => !(x is DataGridRow) && !CollectionView.NewItemPlaceholder.Equals(x))
+                            .Where(x => x is not DataGridRow && !CollectionView.NewItemPlaceholder.Equals(x))
                             .Select(x => (object)((DateTime?)x.GetPropertyValue(fieldName))?.Date)
                             .Distinct()];
                     }
                     else
                     {
                         sourceObjectList = [.. Items.Cast<object>()
-                            .Where(x => !(x is DataGridRow) && !CollectionView.NewItemPlaceholder.Equals(x))
+                            .Where(x => x is not DataGridRow && !CollectionView.NewItemPlaceholder.Equals(x))
                             .Select(x => x.GetPropertyValue(fieldName))
                             .Distinct()];
                     }
@@ -2184,7 +2184,7 @@ namespace FilterDataGrid
                     if (GlobalFilterList.All(f => f.FieldName != CurrentFilter.FieldName))
                         GlobalFilterList.Add(CurrentFilter);
 
-                    // set the current field name as the last filter name
+                    // set the current field name as the last filter name (needed for ShowFilterCommand to reconstruct full list)
                     lastFilter = CurrentFilter.FieldName;
                 });
 
@@ -2365,7 +2365,7 @@ namespace FilterDataGrid
 
         /// <summary>
         /// Raises the unified DataChanged event
-        /// Fired whenever ItemsSource or FilteredItems change
+        /// Fired whenever ItemsSource or filtered items change
         /// </summary>
         private void OnDataChanged()
         {
@@ -2479,6 +2479,9 @@ namespace FilterDataGrid
                 {
                     FilterState.SetIsFiltered(filterButton, true);
                 }
+
+                // set the current field name as the last filter name (needed for ShowFilterCommand to reconstruct full list)
+                lastFilter = filter.FieldName;
             }
 
             RefreshFilter();
@@ -2614,6 +2617,9 @@ namespace FilterDataGrid
             DataGridColumn column = grid.Columns.FirstOrDefault(c =>
                 c is IDataGridColumn dgc && dgc.FieldName == fieldName) ?? throw new ArgumentException($"Column with field name '{fieldName}' not found.", nameof(fieldName));
             PropertyInfo fieldProperty = grid.CollectionType?.GetPropertyInfo(fieldName);
+
+            fieldProperty ??= grid.ItemsSource.Cast<object>().First().GetType().GetPropertyInfo(fieldName);
+
             Type fieldType = null;
 
             if (fieldProperty != null)
@@ -2643,7 +2649,7 @@ namespace FilterDataGrid
         /// <param name="fieldName">The field name to filter</param>
         /// <param name="includedValues">Values to include in the view</param>
         /// <returns>The filter builder for chaining</returns>
-        public FilterBuilder AddIncludeFilter(string fieldName, params object[] includedValues)
+        public FilterBuilder AddIncludeFilter(string fieldName, List<object> includedValues)
         {
             // Get all distinct values for the field
             List<object> allValues = [.. grid.Items.Cast<object>()
